@@ -1,0 +1,35 @@
+# Nextflow runtime
+.nextflow/
+.nextflow.log*
+work/
+
+# Simulation results and large data
+results/
+data/
+
+# Cluster job logs
+*.o[0-9]*
+*.e[0-9]*
+*.log
+*.err
+*.out
+slurm-*.out
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Editors / OS
+.DS_Store
+*.swp
+*.swo
+*~
+.idea/
+.vscode/

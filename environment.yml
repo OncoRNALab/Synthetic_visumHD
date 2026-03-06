@@ -1,0 +1,29 @@
+# Conda environment for Visium-HD-like spatial FASTQ simulation (SRT pipeline)
+# conda env create -f environment.yml
+# Then install sCCIgen and dependencies in R (set repos if CRAN mirror is not configured):
+#   conda activate stdata_sim
+#   R -e "install.packages('BiocManager', repos='https://cloud.r-project.org')"
+#   R -e "BiocManager::install('edgeR')"
+#   R -e "install.packages(c('devtools', 'Matrix', 'data.table', 'igraph', 'raster', 'terra', 'fastDummies'), repos='https://cloud.r-project.org')"
+#   Note: dbscan is installed via conda (r-dbscan) to avoid build issues
+#   R -e "devtools::install_github('drieslab/GiottoClass')"
+#   R -e "devtools::install_github('drieslab/GiottoVisuals')"
+#   R -e "devtools::install_github('drieslab/Giotto')"
+#   R -e "devtools::install_github('songxiaoyu/sCCIgen')"
+name: stdata_sim
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python >=3.8
+  - r-base>=4.2
+  - r-devtools
+  - r-matrix
+  - r-dbscan  # Available via conda-forge, avoids build issues
+  - bioconductor-rhdf5
+  - gdal  # For terra/raster R packages
+  - geos  # For terra/raster R packages
+  - proj  # For terra/raster R packages
+  - gzip
+  - pip

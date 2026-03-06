@@ -1,0 +1,19 @@
+# Example parameters for Visium-HD-like spatial FASTQ simulation
+# Run: nextflow run main.nf -c params_example.yaml -resume
+
+params {
+  reads_total    = 10_000_000
+  seed           = 42
+  grid_rows      = 100
+  grid_cols      = 100
+  barcode_length = 36
+  umi_length     = 12
+  sub_rate       = 0.001
+  ins_rate       = 0.0005
+  del_rate       = 0.0005
+  reference_fasta = "${projectDir}/data/minimal_transcriptome.fasta"
+  read_length_r1 = 75
+  read_length_r2 = 100
+  use_art        = false
+  out_dir        = "${projectDir}/results"
+}

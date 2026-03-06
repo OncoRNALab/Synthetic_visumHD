@@ -1,0 +1,19 @@
+# Example parameters for SRT pipeline (main_srt.nf)
+# Run: nextflow run main_srt.nf -c params_example_srt.yaml -resume
+
+params {
+  seed               = 42
+  total_reads        = 10_000_000
+  barcode_sub_rate    = 0.001
+  barcode_ins_rate    = 0.0005
+  barcode_del_rate   = 0.0005
+  reference_fasta     = "${projectDir}/data/minimal_transcriptome.fasta"
+  read_length_r1     = 75
+  read_length_r2     = 100
+  use_art            = false
+  barcode_length     = 36
+  umi_length         = 10
+  n_genes            = 500
+  n_spots            = 1000
+  out_dir            = "${projectDir}/results/Test1"
+}

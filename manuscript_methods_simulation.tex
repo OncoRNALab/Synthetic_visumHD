@@ -1,0 +1,127 @@
+% Updated manuscript section: Simulation of spatial transcriptomics FASTQ data
+% Replace the corresponding subsection in your main manuscript with this content.
+% Changes: two-stage barcode error model (synthesis + sequencing), PCR expansion after synthesis errors, updated parameters.
+
+\subsection{Generation of synthetic spatial transcriptomics FASTQ data from Visium HD counts}
+\label{sec:methods_simulation}
+
+Because raw sequencing data from our in-house platform were not yet available at the time of writing, we generated synthetic FASTQ files to validate the end-to-end analysis pipeline under controlled conditions, including long spatial barcodes (36\,nt) and elevated barcode error rates.
+
+The simulation takes Visium HD count data as input and produces paired-end FASTQ files. It proceeds in four stages: (i) extraction of spatial UMI counts and spot coordinates from the Visium HD \texttt{feature\_slice.h5}, including assignment of synthetic spatial barcodes and application of array-synthesis errors; (ii) sampling of molecule instances with an explicit PCR-duplication model; (iii) generation of cDNA read sequences from a transcript reference; and (iv) expansion of molecules into sequenced reads (PCR duplicates) with attachment of spatial barcodes and UMIs to Read~1, plus per-read sequencing errors. Sequencing errors are applied only to the barcode region of Read~1; Read~2 is emitted without simulated base-calling errors. All random choices are seed-controlled for reproducibility.
+
+The input \texttt{feature\_slice.h5} represents a sparse per-gene spatial matrix optimized for visualization and exploratory analysis rather than a full biologically comprehensive reconstruction of tissue molecular states. Therefore, the simulated data are primarily intended for controlled technical validation of pipeline behavior. Despite this limitation, the downstream spatial clustering patterns recovered after processing remained consistent with major anatomical brain structures, supporting the utility of this input as a realistic validation substrate.
+
+More broadly, the simulation framework is intentionally simplified and is not intended to be a biologically complete generative model of real experiments. Its purpose is to evaluate workflow behavior (accuracy, runtime, and computational resource usage) under controlled and reproducible conditions, and to test whether processing preserves spatial correlations present in the input data without introducing artifactual structure.
+
+\subsubsection*{Stage~1: Spatial UMI counts, spot selection, and barcode synthesis errors}
+
+The Visium HD input defines a sparse count matrix
+$\mathbf{C} \in \mathbb{Z}_{\ge 0}^{G_{\mathrm{all}} \times S_{\mathrm{all}}}$,
+where $c_{gs}$ is the observed UMI count for gene $g$ at spot $s$.
+We subsample a set of $G$ genes and $S$ spots to control runtime and I/O
+while retaining realistic spatial structure.
+
+To avoid domination by a small number of highly abundant genes when $G$ is limited, we use a stratified sampling strategy: genes are binned into quantiles of a proxy for expression prevalence (the number of non-zero spots per gene in the H5 metadata), and approximately equal numbers of genes are drawn from each stratum. This ensures representation across expression levels while preserving the original spatial count patterns for the selected genes.
+
+For the selected spots, we retain the spatial coordinates $(x_s,y_s)$ provided by the Visium HD data. Each spot $s$ is assigned a synthetic spatial barcode in two steps. First, we generate a perfect (unmutated) barcode $b_s^{\mathrm{true}} \in \{\mathrm{A,C,G,T}\}^{\ell_{\mathrm{BC}}}$ of length $\ell_{\mathrm{BC}}=36$\,nt, sampled uniformly at random. Second, to emulate the dominant source of barcode errors in spatial transcriptomics---defects introduced during array printing and in-situ synthesis---we apply a per-base edit model \emph{once per spot} to obtain a synthesis-mutated barcode $b_s$ that is shared by all molecules and reads originating from that spot; $b_s^{\mathrm{true}}$ corresponds to the intended design and $b_s$ to the array-printed sequence. The edit model uses substitution, insertion, and deletion probabilities $p_{\mathrm{sub}}^{\mathrm{synth}}$, $p_{\mathrm{ins}}^{\mathrm{synth}}$, and $p_{\mathrm{del}}^{\mathrm{synth}}$ applied from left to right. Both $b_s^{\mathrm{true}}$ (for ground-truth evaluation) and $b_s$ (for FASTQ construction) are written together with $(x_s,y_s)$ to \texttt{spot\_coordinates.tsv}.
+
+\subsubsection*{Stage~2: Molecule sampling with PCR family sizes}
+
+From the selected count matrix we construct an implicit pool of spot--gene pairs where multiplicity equals the UMI count:
+\begin{equation}
+\mathcal{P} = \bigl\{(s,g)\bigr\}_{c_{gs}},
+\qquad
+|\mathcal{P}| = \sum_{g}\sum_{s} c_{gs} \equiv N_{\mathrm{pool}}.
+\end{equation}
+Unique molecules are sampled with replacement from $\mathcal{P}$.
+Each sampled molecule $m$ inherits a spot $s_m$ and gene $g_m$ with
+\begin{equation}
+\Pr(s_m=s,\,g_m=g) = \frac{c_{gs}}{N_{\mathrm{pool}}},
+\end{equation}
+thereby preserving the empirical dependence of gene abundance on spatial location.
+
+To model PCR amplification, each unique molecule is assigned a PCR family size $f_m\ge 1$.
+In the default setting we use a geometric distribution with parameter $p$ and a hard cap $f_{\max}$:
+\begin{equation}
+f_m \sim \mathrm{Geom}(p),
+\qquad
+f_m \leftarrow \min(f_m,\, f_{\max}).
+\end{equation}
+With the geometric convention $\Pr(f=k)=(1-p)^{k-1}p$, the expected family size is $\mathbb{E}[f]=1/p$.
+Molecules are sampled until the total number of sequenced reads reaches the target depth $N_{\mathrm{reads}}$:
+\begin{equation}
+\sum_{m=1}^{M} f_m = N_{\mathrm{reads}},
+\end{equation}
+where the final molecule's family size is truncated if necessary to match $N_{\mathrm{reads}}$ exactly. Each unique molecule is assigned a UMI $u_m \in \{\mathrm{A,C,G,T}\}^{\ell_{\mathrm{UMI}}}$ of length $\ell_{\mathrm{UMI}}=10$ by sampling bases uniformly; all PCR duplicates of the same molecule share the same UMI.
+
+\subsubsection*{Stage~3: cDNA read generation from a transcript reference}
+
+For each molecule $m$, we resolve its gene identifier to a transcript identifier $t_m$ by parsing the transcript FASTA headers of the reference
+(\texttt{gencode.vM33.transcripts.fa}). In GENCODE vM33, transcript headers provide both gene IDs and gene symbols; gene IDs are matched after stripping version suffixes (e.g.\ \texttt{ENSMUSG...} vs.\ \texttt{ENSMUSG....v}).
+If a molecule's gene cannot be resolved, the simulation falls back to a reference sequence; in practice, using matched GENCODE vM33 count data and references minimizes such cases.
+
+Given transcript sequence $T_{t_m}$ and read lengths $\ell_{\mathrm{R1}}$ and $\ell_{\mathrm{R2}}$, we generate a deterministic fragment start position so that all PCR duplicates of a molecule originate from the same underlying fragment:
+\begin{equation}
+\mathrm{pos}_m =
+H(\mathrm{mol\_id}_m)
+\bmod \Bigl(\max\bigl(1,\, |T_{t_m}| - (\ell_{\mathrm{R1}}+\ell_{\mathrm{R2}})\bigr)\Bigr),
+\end{equation}
+where $H(\cdot)$ is an MD5-derived integer hash and $|T_{t_m}|$ is the transcript length.
+Read sequences are then extracted as contiguous substrings:
+\begin{align}
+\mathrm{cDNA}^{(1)}_m &= T_{t_m}\bigl[\mathrm{pos}_m : \mathrm{pos}_m+\ell_{\mathrm{R1}}\bigr],\\
+\mathrm{cDNA}^{(2)}_m &= T_{t_m}\bigl[\mathrm{pos}_m+\ell_{\mathrm{R1}} : \mathrm{pos}_m+\ell_{\mathrm{R1}}+\ell_{\mathrm{R2}}\bigr].
+\end{align}
+
+Our libraries are designed such that sequenced Read~2 matches the sense orientation of the original transcript.
+Conceptually, an oligo(dT) primer hybridizes to the poly(A) tail, reverse transcriptase synthesizes first-strand cDNA complementary to the mRNA, and subsequent second-strand synthesis and amplification yield a double-stranded library in which the read generated from the Read~2 primer corresponds to the transcript (sense) sequence.
+Accordingly, we emit Read~2 directly as $\mathrm{cDNA}^{(2)}_m$ (sense relative to the reference transcript sequence).
+
+This representation is sufficient for technical validation of the pipeline, but it remains a simplification of real sequencing data. In experimental data, Read~2 typically carries base-calling/sequencing errors and reflects heterogeneous fragment origins along transcripts; these effects are not explicitly modeled here.
+
+Because the simulation uses a transcript (cDNA) reference, all simulated cDNA sequence is exonic (spliced) by construction and may cross annotated splice junctions in the genome alignment.
+
+\subsubsection*{Stage~4: PCR expansion, Read~1 structure, and sequencing errors}
+
+Each molecule is expanded into $f_m$ sequenced reads (PCR duplicates). Synthesis errors were applied in Stage~1; here we add per-read sequencing errors to the barcode region of Read~1 (Read~2 is emitted unchanged). All $f_m$ reads from molecule $m$ share the same UMI $u_m$, spot $s_m$, and synthesis-mutated barcode $b_{s_m}$; they differ only in the per-read mutated barcode $\tilde{b}_{s_m}^{(r)}$.
+
+For each sequenced read, Read~1 is constructed as
+\begin{equation}
+\mathrm{R1} =
+\underbrace{\tilde{b}_{s_m}^{(r)}}_{\mathrm{barcode}}
+\;\|\;
+\underbrace{u_m}_{\ell_{\mathrm{UMI}}}
+\;\|\;
+\underbrace{\mathrm{suffix}_m}_{\mathrm{trailing\ cDNA}},
+\end{equation}
+where $\tilde{b}_{s_m}^{(r)}$ is the per-read mutated barcode (length may differ from $\ell_{\mathrm{BC}}$ due to indels). The base barcode is the synthesis-mutated $b_{s_m}$ (shared by all reads from spot $s_m$). To emulate base-calling errors introduced during sequencing (after PCR amplification), we apply a second, independent per-base edit model to $b_{s_m}$ for \emph{each} sequenced read. This yields $\tilde{b}_{s_m}^{(r)}$, which may differ between PCR duplicates due to the per-read randomness. The edit probabilities $p_{\mathrm{sub}}^{\mathrm{seq}}$, $p_{\mathrm{ins}}^{\mathrm{seq}}$, and $p_{\mathrm{del}}^{\mathrm{seq}}$ for this stage are set much lower than the synthesis rates, reflecting the typical fidelity of Illumina sequencing.
+Read~2 is the cDNA read sequence emitted in Stage~3.
+
+Thus, PCR duplicates share $(s_m, u_m, t_m, \mathrm{pos}_m, b_{s_m})$ but carry distinct mutated barcodes $\tilde{b}_{s_m}^{(r)}$ in the final FASTQ. The two-stage model separates (i) array-synthesis errors, which affect all reads from a spot identically since they occur before capture, from (ii) sequencing errors, which vary per read since they occur during base-calling.
+
+\subsubsection*{Ground truth outputs}
+
+The simulator writes ground-truth tables alongside the FASTQ files. Each read is linked back to its originating molecule and spot, with all three barcode variants recorded: the perfect barcode $b_s^{\mathrm{true}}$, the synthesis-mutated barcode $b_{s_m}$, and the per-read mutated barcode $\tilde{b}_{s_m}^{(r)}$. These tables enable exact evaluation of barcode correction/decoding, UMI deduplication, and gene counting against the known truth.
+
+\subsubsection*{Parameter settings}
+
+Unless otherwise stated, simulations used:
+\[
+N_{\mathrm{reads}} = 50\times 10^6,\quad
+S=100{,}000,\quad
+G=1{,}000,\quad
+\ell_{\mathrm{BC}}=36,\quad
+\ell_{\mathrm{UMI}}=10,\quad
+\ell_{\mathrm{R1}}=50,\quad
+\ell_{\mathrm{R2}}=100,
+\]
+with PCR duplication enabled using a geometric family-size model with $p=0.5$ (thus $\mathbb{E}[f]=2$) and cap $f_{\max}=20$.
+
+Barcode error rates were modelled in two stages. Array-synthesis errors (per base, applied once per spot) used
+$p_{\mathrm{sub}}^{\mathrm{synth}}=0.03$, $p_{\mathrm{ins}}^{\mathrm{synth}}=0.04$, and $p_{\mathrm{del}}^{\mathrm{synth}}=0.14$,
+based on literature estimates for in-situ synthesis fidelity.
+Sequencing errors (per base, applied independently per read) used
+$p_{\mathrm{sub}}^{\mathrm{seq}}=0.001$, $p_{\mathrm{ins}}^{\mathrm{seq}}=0.0001$, and $p_{\mathrm{del}}^{\mathrm{seq}}=0.0001$,
+reflecting typical Illumina base-calling rates.
+
+The simulation was parallelized by splitting the molecule table into 8 shards for read generation and barcode processing, and all steps were seeded for reproducibility.
