@@ -173,16 +173,7 @@ The barcode and UMI parameters match the simulation defaults: 36 nt barcode star
 ## Requirements
 
 - Nextflow 21.04+
-- Python 3.8+
-- R 4.2+ with `rhdf5`, `Matrix`
-- Conda (recommended) -- see `environment.yml`
-
-### R dependencies
-
-```r
-install.packages("Matrix")
-BiocManager::install("rhdf5")
-```
+- Conda -- all Python and R dependencies (including `rhdf5` and `Matrix`) are installed automatically via `conda env create -f environment.yml`
 
 ---
 
@@ -210,8 +201,3 @@ BiocManager::install("rhdf5")
 +-- manuscript_methods_simulation.tex  # Methods section LaTeX source
 ```
 
----
-
-## Citation
-
-If you use this simulator, please cite the associated manuscript (in preparation).
